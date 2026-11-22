@@ -71,7 +71,8 @@ else fail "neither app/ nor src/ found next to this script"; fi
 SUDO=sudo; [ "$(id -u)" -eq 0 ] && SUDO=""
 libs_ready() {
     local l
-    for l in libxcb-cursor.so.0 libxkbcommon-x11.so.0 libEGL.so.1 libGL.so.1 libglib-2.0.so.0; do
+    # libEGL + libGLESv2 are needed by MediaPipe itself (libmediapipe.so), the rest by Qt.
+    for l in libxcb-cursor.so.0 libxkbcommon-x11.so.0 libEGL.so.1 libGLESv2.so.2 libGL.so.1 libglib-2.0.so.0; do
         ldconfig -p 2>/dev/null | grep -q "$l" || return 1
     done
 }
