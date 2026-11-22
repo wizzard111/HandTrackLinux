@@ -68,6 +68,9 @@ STEP 4. USE IT
     your hand.
   * "My gestures": a finger combination -> keys, music, programs.
     (Keys work in an X11 session; some Wayland desktops block them.)
+  * Ctrl + Alt + H switches "Hide face" on and off from any program
+    (in an X11 session; Wayland does not allow global hotkeys). Change
+    it in Settings.
 
 
 ---------------------------------------------------------------------
