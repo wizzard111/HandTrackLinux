@@ -41,11 +41,11 @@ fi
 
 RED=$'\033[1;31m'; GRN=$'\033[1;32m'; PUR=$'\033[35m'; RST=$'\033[0m'
 step() { printf "\n${RED}>> %s${RST}\n" "$*"; }
-have() { printf "   есть / present: %s\n" "$*"; }
+have() { printf "   present: %s\n" "$*"; }
 did() { printf "   + %s\n" "$*"; }
-pause() { [ -n "${HANDTRACK_IN_TERMINAL:-}" ] && read -r -p "Enter — закрыть / close" _; return 0; }
-fail() { printf "\n${RED}ОШИБКА УСТАНОВКИ / INSTALL FAILED: %s${RST}\nЖурнал / log: %s\n" "$*" "$LOG"; pause; exit 1; }
-ask() { [ -n "$YES" ] && return 0; local a; read -r -p "$1 [Y/n] " a; [[ -z "$a" || "$a" =~ ^[YyДд] ]]; }
+pause() { [ -n "${HANDTRACK_IN_TERMINAL:-}" ] && read -r -p "Press Enter to close" _; return 0; }
+fail() { printf "\n${RED}INSTALL FAILED: %s${RST}\nLog: %s\n" "$*" "$LOG"; pause; exit 1; }
+ask() { [ -n "$YES" ] && return 0; local a; read -r -p "$1 [Y/n] " a; [[ -z "$a" || "$a" =~ ^[Yy] ]]; }
 
 LIB="$HOME/.local/lib/handtrack"
 BIN="$HOME/.local/bin"
@@ -55,13 +55,13 @@ DESKTOP="$SHARE/applications/handtrack.desktop"
 DESKTOP_UN="$SHARE/applications/handtrack-uninstall.desktop"
 
 printf "${PUR}==================================================${RST}\n"
-printf "   H A N D T R A C K   —   установка / installer\n"
+printf "   H A N D T R A C K   —   installer\n"
 printf "   %s, %s\n" "$( . /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-Linux}" )" "$(uname -m)"
 printf "${PUR}==================================================${RST}\n"
 
 if [ -x app/handtrack/handtrack ]; then MODE=release; PKG=app
 elif [ -f src/handtrack/__init__.py ]; then MODE=source; PKG=packaging/linux
-else fail "рядом нет ни app/, ни src/ / neither app/ nor src/ found next to this script"; fi
+else fail "neither app/ nor src/ found next to this script"; fi
 
 # Running the installer again only fills in what is missing or changed: the
 # system libraries, the camera, Python, libraries, models and unchanged program
@@ -78,27 +78,26 @@ libs_ready() {
 camera_ready() {
     [ -f /etc/modprobe.d/handtrack-vcam.conf ] && grep -qx "HandTrack Camera" /sys/class/video4linux/video42/name 2>/dev/null
 }
-step "Проверяю, что уже установлено / Checking what is already installed"
-if [ -d "$LIB" ]; then have "$LIB"; else did "новая установка / fresh install: $LIB"; fi
+step "Checking what is already installed"
+if [ -d "$LIB" ]; then have "$LIB"; else did "fresh install: $LIB"; fi
 if libs_ready && { [ -z "$CAMERA" ] || camera_ready; }; then
-    have "системные библиотеки / system libraries"
-    [ -n "$CAMERA" ] && have "«HandTrack Camera» (/dev/video42)"
+    have "system libraries"
+    [ -n "$CAMERA" ] && have "'HandTrack Camera' (/dev/video42)"
 elif [ -z "$CAMERA" ]; then
-    step "Системные библиотеки (нужен пароль) / system libraries (password needed)"
-    $SUDO bash "$PKG/vcam-setup.sh" --libs-only || echo "(не удалось — продолжаю / failed, continuing)"
+    step "System libraries (password needed)"
+    $SUDO bash "$PKG/vcam-setup.sh" --libs-only || echo "(failed, continuing)"
 else
-    step "Системные библиотеки и виртуальная камера «HandTrack Camera» (нужен пароль) / system libraries and the virtual camera (password needed)"
-    echo "Пароль при вводе не отображается — это нормально. / The password is not shown while typing."
+    step "System libraries and the virtual camera \"HandTrack Camera\" (password needed)"
+    echo "The password is not shown while typing; that is normal."
     if $SUDO bash "$PKG/vcam-setup.sh"; then
         echo "OK"
     else
-        echo "${RED}Камера не настроена — программа работает, камеру можно включить позже из её настроек.${RST}"
-        echo "Camera not set up; the app still works and can set it up later from Settings."
+        echo "${RED}Camera not set up; the app still works and can set it up later from Settings.${RST}"
     fi
 fi
 
 # ---------------------------------------------------------------- 2. the program
-step "Закрываю старую версию / Closing a running copy"
+step "Closing a running copy"
 pkill -f "$LIB/(handtrack|runtime/)" 2>/dev/null && sleep 1
 mkdir -p "$LIB" "$BIN" "$(dirname "$ICON")" "$(dirname "$DESKTOP")"
 # Mirror SRC into DST: copy only new or changed files, delete files that are no
@@ -119,14 +118,14 @@ sync_tree() {
         cp -a "$src/." "$dst/" || return 1
         n=all
     fi
-    if [ "$n" = 0 ]; then have "$(basename "$dst") — без изменений / up to date"
-    else did "$(basename "$dst") — обновлено / updated: $n"; fi
+    if [ "$n" = 0 ]; then have "$(basename "$dst") — up to date"
+    else did "$(basename "$dst") — files updated: $n"; fi
 }
 # Copy a file only when its content differs.
 put() { cmp -s "$1" "$2" || cp -f "$1" "$2"; }
 
 if [ "$MODE" = release ]; then
-    step "Программа / The program"
+    step "The program"
     # Mirrors the whole folder; a source-code install (app, runtime...) is replaced.
     sync_tree app/handtrack "$LIB" /uninstall.sh /driver /self-test.log || fail "copy"
     mkdir -p "$LIB/driver" && put app/vcam-setup.sh "$LIB/driver/vcam-setup.sh" 2>/dev/null
@@ -135,18 +134,18 @@ else
     case "$(uname -m)" in
         x86_64|amd64) UVARCH=x86_64-unknown-linux-gnu ;;
         aarch64|arm64) UVARCH=aarch64-unknown-linux-gnu ;;
-        *) fail "архитектура $(uname -m) не поддерживается / unsupported architecture" ;;
+        *) fail "unsupported architecture: $(uname -m)" ;;
     esac
     # A release install leaves its bundled program behind.
     rm -rf "$LIB/_internal"
     # runtime/ (the private Python) holds absolute paths, so it is built in place
     # and reused on upgrades.
-    step "Python 3.12 и библиотеки / Python 3.12 and libraries"
+    step "Python 3.12 and libraries"
     UV="$LIB/runtime/uv"
     if [ -x "$UV" ]; then have uv; else
         mkdir -p "$LIB/runtime"
         curl -fsSL "https://github.com/astral-sh/uv/releases/latest/download/uv-$UVARCH.tar.gz" \
-            | tar -xz -C "$LIB/runtime" --strip-components=1 || fail "не удалось скачать uv / could not download uv"
+            | tar -xz -C "$LIB/runtime" --strip-components=1 || fail "could not download uv"
         rm -f "$LIB/runtime/uvx"
         did uv
     fi
@@ -156,21 +155,21 @@ else
         have "Python 3.12"
     else
         # A broken environment from an earlier attempt is rebuilt instead of reused.
-        echo "   Ставлю Python 3.12 (первый раз ~1 минута) / Installing Python 3.12"
+        echo "   Installing Python 3.12 (first time ~1 minute)"
         "$UV" venv --clear --python 3.12 "$LIB/runtime/venv" || fail "uv venv"
         did "Python 3.12"
     fi
     # Offline first: succeeds without the network when every library is already
     # installed (or cached); only otherwise download what is missing.
     if "$UV" pip install --offline --quiet --python "$PY" -r packaging/requirements.txt >/dev/null 2>&1; then
-        have "библиотеки / libraries"
+        have "libraries"
     else
-        echo "   Докачиваю библиотеки (первый раз ~2-5 минут) / Downloading libraries"
+        echo "   Downloading libraries (first time ~2-5 minutes)"
         "$UV" pip install --python "$PY" -r packaging/requirements.txt || fail "pip install"
-        did "библиотеки / libraries"
+        did "libraries"
     fi
 
-    step "Программа / The program"
+    step "The program"
     sync_tree src "$LIB/app" __pycache__ || fail "copy"
     mkdir -p "$LIB/driver"
     put packaging/linux/vcam-setup.sh "$LIB/driver/vcam-setup.sh"
@@ -180,7 +179,7 @@ else
     put "$LAUNCH_SH" "$LIB/handtrack"; rm -f "$LAUNCH_SH"
     put src/handtrack/assets/icon.png "$ICON"
 
-    step "Модели / Models"
+    step "Models"
     # Downloads only missing files.
     PYTHONPATH="$LIB/app" "$PY" packaging/fetch_deps.py "$LIB" || fail "fetch_deps"
 fi
@@ -188,7 +187,7 @@ LAUNCHER="$LIB/handtrack"
 chmod +x "$LAUNCHER"
 put uninstall.sh "$LIB/uninstall.sh" && chmod +x "$LIB/uninstall.sh"
 
-step "Проверка программы / Self-test"
+step "Self-test"
 if ! QT_QPA_PLATFORM=offscreen "$LAUNCHER" --self-test > "$LIB/self-test.log" 2>&1; then
     tail -15 "$LIB/self-test.log"
     fail "self-test"
@@ -196,7 +195,7 @@ fi
 did "$(tail -1 "$LIB/self-test.log")"
 
 # ---------------------------------------------------------------- 3. menu entry, commands
-step "Меню приложений / Application menu"
+step "Application menu"
 ln -sf "$LAUNCHER" "$BIN/handtrack"
 ln -sf "$LIB/uninstall.sh" "$BIN/handtrack-uninstall"
 # Menu entries are rewritten only when they are missing or differ.
@@ -212,7 +211,6 @@ Type=Application
 Name=HandTrack
 GenericName=Gesture camera
 Comment=Gestures, gaze tracking, face hiding and a virtual camera for calls
-Comment[ru]=Жесты, взгляд, скрытие лица и виртуальная камера для звонков
 Exec=$LAUNCHER
 Icon=$ICON
 Terminal=false
@@ -225,7 +223,6 @@ cat > "$DESKTOP_UN.new" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Uninstall HandTrack
-Name[ru]=Удалить HandTrack
 Exec=$LIB/uninstall.sh
 Icon=$ICON
 Terminal=true
@@ -238,13 +235,12 @@ if [ -n "$MENU_CHANGED" ]; then
 fi
 # Refresh the icon cache every time: a redesigned icon keeps the same file name.
 command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -q "$SHARE/icons/hicolor" 2>/dev/null
-case ":$PATH:" in *":$BIN:"*) ;; *) echo "(Команда handtrack заработает после повторного входа / after re-login)";; esac
+case ":$PATH:" in *":$BIN:"*) ;; *) echo "(The handtrack command works after you log in again.)";; esac
 
 if [ -n "$LAUNCH" ]; then
-    step "Запускаю HandTrack / Starting HandTrack"
+    step "Starting HandTrack"
     (setsid "$LAUNCHER" >/dev/null 2>&1 &)
 fi
-printf "\n${GRN}ГОТОВО. HandTrack в меню приложений. Камера для звонков: «HandTrack Camera».${RST}\n"
-printf "${GRN}DONE. HandTrack is in your application menu. Camera for calls: \"HandTrack Camera\".${RST}\n"
-echo "Удалить / uninstall:  handtrack-uninstall   (или / or ./uninstall.sh)"
+printf "\n${GRN}DONE. HandTrack is in your application menu. Camera for calls: \"HandTrack Camera\".${RST}\n"
+echo "Uninstall:  handtrack-uninstall   (or ./uninstall.sh)"
 pause

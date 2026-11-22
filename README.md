@@ -4,57 +4,47 @@
 
 # HANDTRACK — Linux
 
-**Жесты, взгляд, скрытие лица и рисование в воздухе — прямо в ваших звонках.**
-Виртуальная камера «HandTrack Camera» для Discord, Telegram, Zoom, Google Meet и OBS.
+**Gestures, gaze, face hiding and drawing in the air, right inside your calls.**
+The "HandTrack Camera" virtual camera for Discord, Telegram, Zoom, Google Meet and OBS.
 
 *In collaboration with [Claude](https://claude.ai).*
 
-[⬇ Скачать](../../releases/latest) · [Пошаговая установка](HOW-TO-INSTALL.txt) · [Windows](https://github.com/OWNER/HandTrackWindows) · [macOS](https://github.com/OWNER/HandTrackMac) · [English](#english)
+[⬇ Download](../../releases/latest) · [Step-by-step install](HOW-TO-INSTALL.txt) · [Windows](https://github.com/OWNER/HandTrackWindows) · [macOS](https://github.com/OWNER/HandTrackMac)
 
 <img src="docs/screenshots/live.png" width="880" alt="HandTrack">
 
 </div>
 
-## Установка
+## Install
 
-1. [Releases](../../releases/latest) → **handtrack-linux-x86_64.tar.gz** → «Извлечь сюда».
-2. Запустите **install.sh** (двойной щелчок; в GNOME — правой кнопкой → «Запустить как программу»).
-   Права на запуск уже выставлены. Пароль спросят один раз — для виртуальной камеры.
-3. HandTrack появится в меню приложений. В звонке выберите камеру **HandTrack Camera**.
+1. [Releases](../../releases/latest) → **handtrack-linux-x86_64.tar.gz** → "Extract Here".
+2. Run **install.sh** (double-click; in GNOME, right-click → "Run as a Program").
+   The files are already executable. Your password is asked once, for the virtual camera.
+3. HandTrack appears in the application menu. In your call, pick the camera **HandTrack Camera**.
 
-Подробно: [HOW-TO-INSTALL.txt](HOW-TO-INSTALL.txt). Удаление: меню → «Удалить HandTrack»,
-команда `handtrack-uninstall` или **uninstall.sh**.
+Step by step: [HOW-TO-INSTALL.txt](HOW-TO-INSTALL.txt). Uninstall: menu → "Uninstall HandTrack",
+the `handtrack-uninstall` command or **uninstall.sh**.
+Running the installer again only adds what is missing or changed.
 
-Поддерживаются Ubuntu 22.04+, Debian 12+, Fedora 39+, Mint 21+, Arch, openSUSE (x86_64 и ARM64).
-Камера — модуль ядра v4l2loopback из вашего дистрибутива; при Secure Boot его нужно подписать (см. инструкцию).
+Supported: Ubuntu 22.04+, Debian 12+, Fedora 39+, Mint 21+, Arch, openSUSE (x86_64 and ARM64).
+The camera is the v4l2loopback kernel module from your distribution; with Secure Boot it has to be signed (see the guide).
 
-> Из кода (Code → Download ZIP) установщик сам поставит изолированный Python 3.12 и библиотеки
-> в `~/.local/lib/handtrack` — системный Python не трогается.
+> From the code (Code → Download ZIP) the installer sets up an isolated Python 3.12 and the libraries
+> in `~/.local/lib/handtrack`; the system Python is not touched.
 
-## Устройство репозитория
+## Repository layout
 
 ```
-install.sh / uninstall.sh   установщик и деинсталлятор
-HOW-TO-INSTALL.txt          пошаговая инструкция
-src/handtrack/              программа (тот же код, что и в Windows/macOS)
-packaging/linux/            vcam-setup.sh (камера + библиотеки Qt), сборка релиза, спецификация PyInstaller
-tests/                      тесты
+install.sh / uninstall.sh   installer and uninstaller
+HOW-TO-INSTALL.txt          step-by-step guide
+src/handtrack/              the program (same code as on Windows/macOS)
+packaging/linux/            vcam-setup.sh (camera + Qt libraries), release build, PyInstaller spec
+tests/                      tests
 ```
 
-Разработка: `pip install -r packaging/requirements-dev.txt`, `PYTHONPATH=src python -m handtrack`,
-`python -m pytest`, релиз — `packaging/linux/build.sh`.
+Development: `pip install -r packaging/requirements-dev.txt`, `PYTHONPATH=src python -m handtrack`,
+`python -m pytest`; release: `packaging/linux/build.sh`.
 
-## Лицензия
+## License
 
-[MIT](LICENSE). Сторонние компоненты — [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md).
-
----
-
-<a id="english"></a>
-
-## English
-
-Download **handtrack-linux-x86_64.tar.gz** from [Releases](../../releases/latest), extract it and run
-**install.sh** (double-click, or right-click → "Run as a Program" in GNOME). Type your password once
-for the virtual camera. HandTrack appears in the app menu; pick **HandTrack Camera** in your call app.
-Uninstall with `handtrack-uninstall`. Step by step: [HOW-TO-INSTALL.txt](HOW-TO-INSTALL.txt).
+[MIT](LICENSE). Third-party components: [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md).
