@@ -101,22 +101,47 @@ step "Closing a running copy"
 pkill -f "$LIB/(handtrack|runtime/)" 2>/dev/null && sleep 1
 mkdir -p "$LIB" "$BIN" "$(dirname "$ICON")" "$(dirname "$DESKTOP")"
 # Mirror SRC into DST: copy only new or changed files, delete files that are no
-# longer part of the program. Extra arguments are rsync --exclude patterns
-# (excluded paths are neither copied nor deleted). Without rsync: full copy.
+# longer part of the program. Extra arguments are exclusions: "/name" matches a
+# top-level entry, "name" any path component. Excluded paths are neither copied
+# nor deleted. Uses rsync when present, otherwise compares files with cmp.
+_excluded() {   # _excluded REL PATTERN...
+    local rel="$1" p; shift
+    for p in "$@"; do
+        case "$p" in
+            /*) [ "${rel%%/*}" = "${p#/}" ] && return 0 ;;
+            *)  case "/$rel/" in */"$p"/*) return 0 ;; esac ;;
+        esac
+    done
+    return 1
+}
 sync_tree() {
     local src="$1" dst="$2"; shift 2
-    local ex=() keep=() p n
-    for p in "$@"; do ex+=(--exclude="$p"); keep+=(! -name "${p#/}"); done
+    local ex=() p n=0 f d rel
     mkdir -p "$dst"
     if command -v rsync >/dev/null 2>&1; then
+        for p in "$@"; do ex+=(--exclude="$p"); done
         local out
         out="$(rsync -a --delete --itemize-changes "${ex[@]}" "$src/" "$dst/")" || return 1
         # Attribute-only lines start with "."; the rest are copies and deletions.
         n=$(printf '%s\n' "$out" | grep -c '^[^.]')
     else
-        find "$dst" -mindepth 1 -maxdepth 1 "${keep[@]}" -exec rm -rf {} +
-        cp -a "$src/." "$dst/" || return 1
-        n=all
+        while IFS= read -r -d '' f; do
+            rel="${f#"$src"/}"; d="$dst/$rel"
+            _excluded "$rel" "$@" && continue
+            if [ -L "$f" ]; then
+                [ -L "$d" ] && [ "$(readlink "$f")" = "$(readlink "$d")" ] && continue
+            elif [ -f "$d" ] && [ ! -L "$d" ] && cmp -s "$f" "$d"; then
+                continue
+            fi
+            mkdir -p "$(dirname "$d")" && rm -rf "$d" && cp -a "$f" "$d" || return 1
+            n=$((n + 1))
+        done < <(find "$src" \( -type f -o -type l \) -print0)
+        while IFS= read -r -d '' d; do
+            rel="${d#"$dst"/}"
+            _excluded "$rel" "$@" && continue
+            [ -e "$src/$rel" ] || [ -L "$src/$rel" ] || { rm -f "$d"; n=$((n + 1)); }
+        done < <(find "$dst" \( -type f -o -type l \) -print0)
+        find "$dst" -mindepth 1 -type d -empty -delete 2>/dev/null
     fi
     if [ "$n" = 0 ]; then have "$(basename "$dst") — up to date"
     else did "$(basename "$dst") — files updated: $n"; fi
