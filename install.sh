@@ -41,6 +41,8 @@ fi
 
 RED=$'\033[1;31m'; GRN=$'\033[1;32m'; PUR=$'\033[35m'; RST=$'\033[0m'
 step() { printf "\n${RED}>> %s${RST}\n" "$*"; }
+have() { printf "   есть / present: %s\n" "$*"; }
+did() { printf "   + %s\n" "$*"; }
 pause() { [ -n "${HANDTRACK_IN_TERMINAL:-}" ] && read -r -p "Enter — закрыть / close" _; return 0; }
 fail() { printf "\n${RED}ОШИБКА УСТАНОВКИ / INSTALL FAILED: %s${RST}\nЖурнал / log: %s\n" "$*" "$LOG"; pause; exit 1; }
 ask() { [ -n "$YES" ] && return 0; local a; read -r -p "$1 [Y/n] " a; [[ -z "$a" || "$a" =~ ^[YyДд] ]]; }
@@ -61,9 +63,27 @@ if [ -x app/handtrack/handtrack ]; then MODE=release; PKG=app
 elif [ -f src/handtrack/__init__.py ]; then MODE=source; PKG=packaging/linux
 else fail "рядом нет ни app/, ни src/ / neither app/ nor src/ found next to this script"; fi
 
+# Running the installer again only fills in what is missing or changed: the
+# system libraries, the camera, Python, libraries, models and unchanged program
+# files are left alone.
+
 # ---------------------------------------------------------------- 1. system part (sudo once)
 SUDO=sudo; [ "$(id -u)" -eq 0 ] && SUDO=""
-if [ -z "$CAMERA" ]; then
+libs_ready() {
+    local l
+    for l in libxcb-cursor.so.0 libxkbcommon-x11.so.0 libEGL.so.1 libGL.so.1 libglib-2.0.so.0; do
+        ldconfig -p 2>/dev/null | grep -q "$l" || return 1
+    done
+}
+camera_ready() {
+    [ -f /etc/modprobe.d/handtrack-vcam.conf ] && grep -qx "HandTrack Camera" /sys/class/video4linux/video42/name 2>/dev/null
+}
+step "Проверяю, что уже установлено / Checking what is already installed"
+if [ -d "$LIB" ]; then have "$LIB"; else did "новая установка / fresh install: $LIB"; fi
+if libs_ready && { [ -z "$CAMERA" ] || camera_ready; }; then
+    have "системные библиотеки / system libraries"
+    [ -n "$CAMERA" ] && have "«HandTrack Camera» (/dev/video42)"
+elif [ -z "$CAMERA" ]; then
     step "Системные библиотеки (нужен пароль) / system libraries (password needed)"
     $SUDO bash "$PKG/vcam-setup.sh" --libs-only || echo "(не удалось — продолжаю / failed, continuing)"
 else
@@ -81,61 +101,112 @@ fi
 step "Закрываю старую версию / Closing a running copy"
 pkill -f "$LIB/(handtrack|runtime/)" 2>/dev/null && sleep 1
 mkdir -p "$LIB" "$BIN" "$(dirname "$ICON")" "$(dirname "$DESKTOP")"
-# Replace the previous version but keep runtime/ (the private Python): its
-# files hold absolute paths, so it is built in place and reused on upgrades.
-find "$LIB" -mindepth 1 -maxdepth 1 ! -name runtime -exec rm -rf {} +
+# Mirror SRC into DST: copy only new or changed files, delete files that are no
+# longer part of the program. Extra arguments are rsync --exclude patterns
+# (excluded paths are neither copied nor deleted). Without rsync: full copy.
+sync_tree() {
+    local src="$1" dst="$2"; shift 2
+    local ex=() keep=() p n
+    for p in "$@"; do ex+=(--exclude="$p"); keep+=(! -name "${p#/}"); done
+    mkdir -p "$dst"
+    if command -v rsync >/dev/null 2>&1; then
+        local out
+        out="$(rsync -a --delete --itemize-changes "${ex[@]}" "$src/" "$dst/")" || return 1
+        # Attribute-only lines start with "."; the rest are copies and deletions.
+        n=$(printf '%s\n' "$out" | grep -c '^[^.]')
+    else
+        find "$dst" -mindepth 1 -maxdepth 1 "${keep[@]}" -exec rm -rf {} +
+        cp -a "$src/." "$dst/" || return 1
+        n=all
+    fi
+    if [ "$n" = 0 ]; then have "$(basename "$dst") — без изменений / up to date"
+    else did "$(basename "$dst") — обновлено / updated: $n"; fi
+}
+# Copy a file only when its content differs.
+put() { cmp -s "$1" "$2" || cp -f "$1" "$2"; }
 
 if [ "$MODE" = release ]; then
-    step "Копирую программу / Copying the program"
-    rm -rf "$LIB/runtime"
-    cp -a app/handtrack/. "$LIB/" || fail "copy"
-    mkdir -p "$LIB/driver" && cp -f app/vcam-setup.sh "$LIB/driver/" 2>/dev/null
-    cp -f app/icon.png "$ICON" 2>/dev/null
+    step "Программа / The program"
+    # Mirrors the whole folder; a source-code install (app, runtime...) is replaced.
+    sync_tree app/handtrack "$LIB" /uninstall.sh /driver /self-test.log || fail "copy"
+    mkdir -p "$LIB/driver" && put app/vcam-setup.sh "$LIB/driver/vcam-setup.sh" 2>/dev/null
+    put app/icon.png "$ICON" 2>/dev/null
 else
     case "$(uname -m)" in
         x86_64|amd64) UVARCH=x86_64-unknown-linux-gnu ;;
         aarch64|arm64) UVARCH=aarch64-unknown-linux-gnu ;;
         *) fail "архитектура $(uname -m) не поддерживается / unsupported architecture" ;;
     esac
-    step "Скачиваю uv (установщик Python) / Getting uv"
-    UVTMP="$(mktemp -d)"
-    curl -fsSL "https://github.com/astral-sh/uv/releases/latest/download/uv-$UVARCH.tar.gz" \
-        | tar -xz -C "$UVTMP" --strip-components=1 || fail "не удалось скачать uv / could not download uv"
+    # A release install leaves its bundled program behind.
+    rm -rf "$LIB/_internal"
+    # runtime/ (the private Python) holds absolute paths, so it is built in place
+    # and reused on upgrades.
+    step "Python 3.12 и библиотеки / Python 3.12 and libraries"
+    UV="$LIB/runtime/uv"
+    if [ -x "$UV" ]; then have uv; else
+        mkdir -p "$LIB/runtime"
+        curl -fsSL "https://github.com/astral-sh/uv/releases/latest/download/uv-$UVARCH.tar.gz" \
+            | tar -xz -C "$LIB/runtime" --strip-components=1 || fail "не удалось скачать uv / could not download uv"
+        rm -f "$LIB/runtime/uvx"
+        did uv
+    fi
     export UV_PYTHON_INSTALL_DIR="$LIB/runtime/python"
-    # A broken environment from an earlier attempt is rebuilt instead of reused.
-    "$LIB/runtime/venv/bin/python" -c "" 2>/dev/null || rm -rf "$LIB/runtime/venv"
-    step "Ставлю Python 3.12 и библиотеки (первый раз ~2-5 минут) / Installing Python 3.12 and libraries"
-    "$UVTMP/uv" venv --allow-existing --python 3.12 "$LIB/runtime/venv" || fail "uv venv"
-    "$UVTMP/uv" pip install --python "$LIB/runtime/venv/bin/python" -r packaging/requirements.txt         || fail "pip install"
-    step "Копирую программу и скачиваю модели / Copying the program, downloading models"
-    cp -a src "$LIB/app"
+    PY="$LIB/runtime/venv/bin/python"
+    if "$PY" -c "import sys; sys.exit(0 if sys.version_info[:2] == (3, 12) else 1)" 2>/dev/null; then
+        have "Python 3.12"
+    else
+        # A broken environment from an earlier attempt is rebuilt instead of reused.
+        echo "   Ставлю Python 3.12 (первый раз ~1 минута) / Installing Python 3.12"
+        "$UV" venv --clear --python 3.12 "$LIB/runtime/venv" || fail "uv venv"
+        did "Python 3.12"
+    fi
+    # Offline first: succeeds without the network when every library is already
+    # installed (or cached); only otherwise download what is missing.
+    if "$UV" pip install --offline --quiet --python "$PY" -r packaging/requirements.txt >/dev/null 2>&1; then
+        have "библиотеки / libraries"
+    else
+        echo "   Докачиваю библиотеки (первый раз ~2-5 минут) / Downloading libraries"
+        "$UV" pip install --python "$PY" -r packaging/requirements.txt || fail "pip install"
+        did "библиотеки / libraries"
+    fi
+
+    step "Программа / The program"
+    sync_tree src "$LIB/app" __pycache__ || fail "copy"
     mkdir -p "$LIB/driver"
-    cp -f packaging/linux/vcam-setup.sh "$LIB/driver/"
-    PYTHONPATH="$LIB/app" "$LIB/runtime/venv/bin/python" packaging/fetch_deps.py "$LIB" || fail "fetch_deps"
-    cat > "$LIB/handtrack" <<'EOF'
-#!/bin/sh
-HERE="$(dirname "$(readlink -f "$0")")"
-cd "$HERE/app" && exec "$HERE/runtime/venv/bin/python" -m handtrack "$@"
-EOF
-    cp -f src/handtrack/assets/icon.png "$ICON"
-    rm -rf "$UVTMP"
+    put packaging/linux/vcam-setup.sh "$LIB/driver/vcam-setup.sh"
+    LAUNCH_SH="$(mktemp)"
+    printf '%s\n' '#!/bin/sh' 'HERE="$(dirname "$(readlink -f "$0")")"' \
+        'cd "$HERE/app" && exec "$HERE/runtime/venv/bin/python" -m handtrack "$@"' > "$LAUNCH_SH"
+    put "$LAUNCH_SH" "$LIB/handtrack"; rm -f "$LAUNCH_SH"
+    put src/handtrack/assets/icon.png "$ICON"
+
+    step "Модели / Models"
+    # Downloads only missing files.
+    PYTHONPATH="$LIB/app" "$PY" packaging/fetch_deps.py "$LIB" || fail "fetch_deps"
 fi
 LAUNCHER="$LIB/handtrack"
 chmod +x "$LAUNCHER"
-cp -f uninstall.sh "$LIB/uninstall.sh" && chmod +x "$LIB/uninstall.sh"
+put uninstall.sh "$LIB/uninstall.sh" && chmod +x "$LIB/uninstall.sh"
 
 step "Проверка программы / Self-test"
 if ! QT_QPA_PLATFORM=offscreen "$LAUNCHER" --self-test > "$LIB/self-test.log" 2>&1; then
     tail -15 "$LIB/self-test.log"
     fail "self-test"
 fi
-tail -1 "$LIB/self-test.log"
+did "$(tail -1 "$LIB/self-test.log")"
 
 # ---------------------------------------------------------------- 3. menu entry, commands
-step "Добавляю в меню приложений / Adding to the application menu"
+step "Меню приложений / Application menu"
 ln -sf "$LAUNCHER" "$BIN/handtrack"
 ln -sf "$LIB/uninstall.sh" "$BIN/handtrack-uninstall"
-cat > "$DESKTOP" <<EOF
+# Menu entries are rewritten only when they are missing or differ.
+MENU_CHANGED=""
+put_entry() {
+    if cmp -s "$1" "$2"; then have "$(basename "$2")"
+    else cp -f "$1" "$2" && chmod +x "$2"; did "$(basename "$2")"; MENU_CHANGED=1; fi
+    rm -f "$1"
+}
+cat > "$DESKTOP.new" <<EOF
 [Desktop Entry]
 Type=Application
 Name=HandTrack
@@ -149,7 +220,8 @@ Categories=AudioVideo;Video;Utility;
 Keywords=camera;webcam;gesture;discord;telegram;zoom;
 StartupWMClass=handtrack
 EOF
-cat > "$DESKTOP_UN" <<EOF
+put_entry "$DESKTOP.new" "$DESKTOP"
+cat > "$DESKTOP_UN.new" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Uninstall HandTrack
@@ -160,8 +232,11 @@ Terminal=true
 Categories=Utility;
 NoDisplay=false
 EOF
-chmod +x "$DESKTOP" "$DESKTOP_UN"
-command -v update-desktop-database >/dev/null && update-desktop-database "$(dirname "$DESKTOP")" 2>/dev/null
+put_entry "$DESKTOP_UN.new" "$DESKTOP_UN"
+if [ -n "$MENU_CHANGED" ]; then
+    command -v update-desktop-database >/dev/null && update-desktop-database "$(dirname "$DESKTOP")" 2>/dev/null
+fi
+# Refresh the icon cache every time: a redesigned icon keeps the same file name.
 command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -q "$SHARE/icons/hicolor" 2>/dev/null
 case ":$PATH:" in *":$BIN:"*) ;; *) echo "(Команда handtrack заработает после повторного входа / after re-login)";; esac
 
