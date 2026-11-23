@@ -32,10 +32,22 @@ The camera is the v4l2loopback kernel module from your distribution; with Secure
 > From the code (Code → Download ZIP) the installer sets up an isolated Python 3.12 and the libraries
 > in `~/.local/lib/handtrack`; the system Python is not touched.
 
+## Update
+
+HandTrack has an updater: menu → **Update HandTrack**, or the `handtrack-update` command (the installer adds
+both). It asks GitHub whether a newer version exists, backs up your settings, calibration and gestures
+(`~/.local/state/handtrack-updater/backups`, the last 3), downloads the release and checks its SHA-256, installs it
+(files the new version no longer needs are deleted), checks that every setting is still there and starts HandTrack
+again if it was running. The password is asked only if system libraries are missing or the camera set up earlier
+needs repair. Installed with an older version without the menu entry? Run `./update.sh` in the extracted folder once.
+Options: `--check`, `--force`, `--yes`, `--package FILE`. The updater is one script of about 14 KB; it runs only
+when you start it.
+
 ## Repository layout
 
 ```
 install.sh / uninstall.sh   installer and uninstaller
+update.sh                   updater (installed as handtrack-update and "Update HandTrack" in the menu)
 HOW-TO-INSTALL.txt          step-by-step guide
 src/handtrack/              the program (same code as on Windows/macOS)
 packaging/linux/            vcam-setup.sh (camera + Qt libraries), release build, PyInstaller spec
