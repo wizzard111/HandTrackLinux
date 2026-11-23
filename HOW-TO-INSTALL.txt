@@ -28,6 +28,7 @@ STEP 2. EXTRACT
   The folder contains:
        install.sh            <- the installer
        uninstall.sh          <- the uninstaller
+       update.sh             <- installs a newer version
        HOW-TO-INSTALL.txt    <- this guide
   The files are already executable; nothing to set up.
 
@@ -103,3 +104,14 @@ IF SOMETHING GOES WRONG
     It checks what is missing and installs only that, without
     downloading or overwriting anything else.
   * Install log: /tmp/handtrack-install.log
+
+---------------------------------------------------------------------
+UPDATING
+---------------------------------------------------------------------
+
+  Run ./update.sh (in the extracted folder, the same way as install.sh).
+  It checks GitHub for a newer version, backs up your settings,
+  calibration and gestures, installs the new version (files the new
+  version no longer needs are deleted) and starts HandTrack again.
+  Everything you set up is kept.
+  ./update.sh --check only tells whether a newer version exists.
