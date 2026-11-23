@@ -41,12 +41,13 @@ printf "${RED}>> Removing the program${RST}\n"
 # reading a deleted script from its open file, so removing the folder is safe).
 pkill -f "$LIB/(handtrack|runtime/)" 2>/dev/null
 rm -rf "$LIB"
-rm -f "$BIN/handtrack" "$BIN/handtrack-uninstall" \
+rm -f "$BIN/handtrack" "$BIN/handtrack-uninstall" "$BIN/handtrack-update" \
       "$SHARE/applications/handtrack.desktop" "$SHARE/applications/handtrack-uninstall.desktop" \
+      "$SHARE/applications/handtrack-update.desktop" \
       "$SHARE/icons/hicolor/256x256/apps/handtrack.png"
 command -v update-desktop-database >/dev/null && update-desktop-database "$SHARE/applications" 2>/dev/null
 
-if [ -n "$REMOVE_CFG" ]; then rm -rf "$CFG" && echo "Settings deleted."
+if [ -n "$REMOVE_CFG" ]; then rm -rf "$CFG" "${XDG_STATE_HOME:-$HOME/.local/state}/handtrack-updater" && echo "Settings deleted."
 elif [ -d "$CFG" ]; then echo "Settings kept: $CFG"; fi
 
 if [ -n "$REMOVE_CAM" ]; then

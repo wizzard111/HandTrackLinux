@@ -60,7 +60,7 @@ install_package() {   # release archive or source code archive -> its install.sh
 }
 
 # ---------------------------------------------------------------- common part (same in every app)
-CHECK=""; FORCE=""; YES=""; LAUNCH=1; PACKAGE=""
+CHECK=""; FORCE=""; YES=""; LAUNCH=1; PACKAGE=""; SETUP=""; SIGN=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --check) CHECK=1 ;;
@@ -68,6 +68,9 @@ while [ $# -gt 0 ]; do
         --yes|-y) YES=1 ;;
         --no-launch) LAUNCH="" ;;
         --package) PACKAGE="${2:-}"; shift ;;
+        --pause) PAUSE=1 ;;                     # started from a menu entry: keep the window open
+        --setup) SETUP=1 ;;                     # (macOS, used by the installer) signing identity + launcher
+        --sign) SIGN="${2:-}"; shift ;;          # (macOS, used by the installer) sign a freshly built app
         -h|--help) sed -n '2,/^[^#]/p' "$0" | sed -e '$d' -e 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "Unknown option: $1 (see --help)"; exit 1 ;;
     esac
@@ -126,6 +129,14 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT TERM
 
+# Called by an installer: only set up the signing identity and the launcher / sign its build, then stop.
+if [ -n "$SETUP$SIGN" ]; then
+    type sign_app >/dev/null 2>&1 || { echo "--setup and --sign are for macOS"; exit 1; }
+    if [ -n "$SETUP" ]; then setup_signing; install_launcher "$SELF"; fi
+    if [ -n "$SIGN" ]; then sign_app "$SIGN"; fi
+    exit 0
+fi
+
 echo "================================================"
 echo "  $APP_NAME updater"
 echo "================================================"
@@ -158,12 +169,20 @@ if [ -n "$PACKAGE" ]; then
     info "Package:   $PACKAGE"
     [ -n "$CHECK" ] && fail "--check needs the internet (it cannot be used with --package)"
 else
-    json="$(fetch "https://api.github.com/repos/$REPO/releases/latest" -)" \
-        || fail "could not ask GitHub for the latest version. Check the internet connection."
+    json="$(fetch "https://api.github.com/repos/$REPO/releases/latest" - 2>/dev/null)" || json=""
     TAG="$(printf '%s' "$json" | tr -d '\n' | grep -oE '"tag_name": *"[^"]*"' | head -n 1 | sed -E 's/.*"([^"]*)"$/\1/')"
-    [ -n "$TAG" ] || fail "GitHub did not say which version is the latest"
+    if [ -z "$TAG" ]; then
+        # The GitHub API answers 60 questions an hour per address; the release page names the latest version too.
+        json=""
+        TAG="$(curl -fsSIL --max-time 30 -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest" 2>/dev/null |
+               sed -n 's|.*/releases/tag/||p')"
+        [ -n "$TAG" ] || fail "could not ask GitHub for the latest version. Check the internet connection."
+    fi
     LATEST="$(ver "$TAG")"
-    if [ -n "$ASSET" ]; then
+    if [ -n "$ASSET" ] && [ -z "$json" ]; then
+        URL="https://github.com/$REPO/releases/download/$TAG/$ASSET"; DIGEST="-"
+        info "Latest:    v$LATEST"
+    elif [ -n "$ASSET" ]; then
         # The release's assets: name ... size ... digest ... browser_download_url (one field per line here).
         # shellcheck disable=SC2020  # tr: each of , { } starts a new line
         read -r URL DIGEST SIZE <<< "$(printf '%s' "$json" | tr ',{}' '\n\n\n' | awk -v want="$ASSET" '
@@ -229,6 +248,7 @@ step "Installing $APP_NAME${LATEST:+ v$LATEST}"
 install_package "$PACKAGE" || fail "the installation did not succeed (see the messages above)"
 NOW="$(ver "$(installed_version)")"; NOW="${NOW:-$LATEST}"
 if [ -n "$NOW" ]; then echo "$NOW" > "$STATE_DIR/installed-version"; else rm -f "$STATE_DIR/installed-version"; fi
+type after_install >/dev/null 2>&1 && after_install   # (macOS) the launcher gets the new updater
 
 # ---------------------------------------------------------------- 5. settings check
 if [ "$COUNT" -gt 0 ]; then

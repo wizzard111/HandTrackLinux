@@ -53,6 +53,7 @@ SHARE="${XDG_DATA_HOME:-$HOME/.local/share}"
 ICON="$SHARE/icons/hicolor/256x256/apps/handtrack.png"
 DESKTOP="$SHARE/applications/handtrack.desktop"
 DESKTOP_UN="$SHARE/applications/handtrack-uninstall.desktop"
+DESKTOP_UP="$SHARE/applications/handtrack-update.desktop"
 
 printf "${PUR}==================================================${RST}\n"
 printf "   H A N D T R A C K   —   installer\n"
@@ -153,7 +154,7 @@ put() { cmp -s "$1" "$2" || cp -f "$1" "$2"; }
 if [ "$MODE" = release ]; then
     step "The program"
     # Mirrors the whole folder; a source-code install (app, runtime...) is replaced.
-    sync_tree app/handtrack "$LIB" /uninstall.sh /driver /self-test.log || fail "copy"
+    sync_tree app/handtrack "$LIB" /uninstall.sh /update.sh /driver /self-test.log || fail "copy"
     mkdir -p "$LIB/driver" && put app/vcam-setup.sh "$LIB/driver/vcam-setup.sh" 2>/dev/null
     put app/icon.png "$ICON" 2>/dev/null
 else
@@ -224,6 +225,8 @@ fi
 LAUNCHER="$LIB/handtrack"
 chmod +x "$LAUNCHER"
 put uninstall.sh "$LIB/uninstall.sh" && chmod +x "$LIB/uninstall.sh"
+# The updater, as a new file: an updater that is running right now (and started this installer) is not disturbed.
+[ -f update.sh ] && { rm -f "$LIB/update.sh"; cp update.sh "$LIB/update.sh" && chmod +x "$LIB/update.sh"; }
 
 step "Self-test"
 if ! QT_QPA_PLATFORM=offscreen "$LAUNCHER" --self-test > "$LIB/self-test.log" 2>&1; then
@@ -236,6 +239,7 @@ did "$(tail -1 "$LIB/self-test.log")"
 step "Application menu"
 ln -sf "$LAUNCHER" "$BIN/handtrack"
 ln -sf "$LIB/uninstall.sh" "$BIN/handtrack-uninstall"
+[ -f "$LIB/update.sh" ] && ln -sf "$LIB/update.sh" "$BIN/handtrack-update"
 # Menu entries are rewritten only when they are missing or differ.
 MENU_CHANGED=""
 put_entry() {
@@ -268,6 +272,19 @@ Categories=Utility;
 NoDisplay=false
 EOF
 put_entry "$DESKTOP_UN.new" "$DESKTOP_UN"
+if [ -f "$LIB/update.sh" ]; then
+    cat > "$DESKTOP_UP.new" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Update HandTrack
+Comment=Installs the newest version of HandTrack; the settings are kept
+Exec=$LIB/update.sh --pause
+Icon=$ICON
+Terminal=true
+Categories=Utility;
+EOF
+    put_entry "$DESKTOP_UP.new" "$DESKTOP_UP"
+fi
 if [ -n "$MENU_CHANGED" ]; then
     command -v update-desktop-database >/dev/null && update-desktop-database "$(dirname "$DESKTOP")" 2>/dev/null
 fi
@@ -280,5 +297,6 @@ if [ -n "$LAUNCH" ]; then
     (setsid "$LAUNCHER" >/dev/null 2>&1 &)
 fi
 printf "\n${GRN}DONE. HandTrack is in your application menu. Camera for calls: \"HandTrack Camera\".${RST}\n"
+echo 'Update:     "Update HandTrack" in the menu (or handtrack-update)'
 echo "Uninstall:  handtrack-uninstall   (or ./uninstall.sh)"
 pause

@@ -109,9 +109,11 @@ IF SOMETHING GOES WRONG
 UPDATING
 ---------------------------------------------------------------------
 
-  Run ./update.sh (in the extracted folder, the same way as install.sh).
+  Application menu -> "Update HandTrack" (or the command handtrack-update).
   It checks GitHub for a newer version, backs up your settings,
   calibration and gestures, installs the new version (files the new
   version no longer needs are deleted) and starts HandTrack again.
   Everything you set up is kept.
-  ./update.sh --check only tells whether a newer version exists.
+  handtrack-update --check only tells whether a newer version exists.
+  (Installed with an older version that has no such entry? Run
+  ./update.sh in the extracted folder once.)
